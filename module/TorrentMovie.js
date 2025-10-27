@@ -8,10 +8,13 @@ export default function TorrentMovie(magnetURI) {
   this.video = null;
   this.subtitles = null;
 
+  this.torrent = null;
+
   this.initiate = function () {
     return new Promise((resolve, reject) => {
       client.add(this.magnetURI, (torrent) => {
         console.log("Client is downloading:", torrent.infoHash);
+        this.torrent = torrent;
 
         this.video = torrent.files.find(function (file) {
           return file.name.endsWith(".mp4");
@@ -23,5 +26,9 @@ export default function TorrentMovie(magnetURI) {
         resolve();
       });
     });
+  };
+
+  this.destroy = function () {
+    client.remove(this.torrent);
   };
 }

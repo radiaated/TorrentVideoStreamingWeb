@@ -82,10 +82,6 @@ app.get("/stream", async (req, res) => {
     res.end();
   });
 
-  stream.on("close", () => {
-    console.log("Stream closed.");
-  });
-
   stream.pipe(res);
 });
 
