@@ -1,7 +1,8 @@
 import WebTorrent from "webtorrent";
-var client = new WebTorrent();
 
-export default function torr(magnetURI) {
+const client = new WebTorrent();
+
+export default function TorrentMovie(magnetURI) {
   this.magnetURI = magnetURI;
 
   this.video = null;
@@ -16,10 +17,9 @@ export default function torr(magnetURI) {
           return file.name.endsWith(".mp4");
         });
 
-        this.subtitles = torrent.files.find(function (file) {
+        this.subtitles = torrent.files.filter(function (file) {
           return file.name.endsWith(".srt");
         });
-
         resolve();
       });
     });

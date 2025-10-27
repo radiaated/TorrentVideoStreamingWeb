@@ -1,12 +1,12 @@
 import express from "express";
-import torr from "./torr.js";
+import TorrentMovie from "./module/TorrentMovie.js";
 
 const app = express();
 const port = 3000;
 
 const activeTorrents = new Map();
 
-app.get("/v", async (req, res) => {
+app.get("/fetch", async (req, res) => {
   const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
 
   if (!magnetURI) return res.status(400).send("Missing magnet URI");
@@ -14,7 +14,26 @@ app.get("/v", async (req, res) => {
   let tor = activeTorrents.get(magnetURI);
 
   if (!tor) {
-    tor = new torr(magnetURI);
+    tor = new TorrentMovie(magnetURI);
+    await tor.initiate();
+    activeTorrents.set(magnetURI, tor);
+  }
+
+  return res.send({
+    video: tor.video.name,
+    subitles: tor.subtitles.map((sub) => sub.name),
+  });
+});
+
+app.get("/stream", async (req, res) => {
+  const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
+
+  if (!magnetURI) return res.status(400).send("Missing magnet URI");
+
+  let tor = activeTorrents.get(magnetURI);
+
+  if (!tor) {
+    tor = new TorrentMovie(magnetURI);
     await tor.initiate();
     activeTorrents.set(magnetURI, tor);
   }
