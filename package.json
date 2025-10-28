@@ -1,8 +1,8 @@
 {
   "type": "module",
-  "name": "tizen_movies",
+  "name": "torrent_video_streaming_web",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
