@@ -1,7 +1,13 @@
 import express from "express";
-import TorrentMovie from "./module/TorrentMovie.js";
+import TorrentMedia from "./module/TorrentMedia.js";
+import cors from "cors";
+import srt2vtt from "srt-to-vtt";
+import parseQueryWithMangetURI from "./helper/parseQueryWithMangetURI.js";
 
 const app = express();
+
+app.use(cors());
+
 const port = 3000;
 
 app.get("/metadata", async (req, res) => {
@@ -9,32 +15,40 @@ app.get("/metadata", async (req, res) => {
 
   if (!magnetURI) return res.status(400).send("Missing magnet URI");
 
-  const tor = new TorrentMovie(magnetURI);
+  const tor = new TorrentMedia(magnetURI);
   await tor.initiate();
 
   return res.send(tor.getMovieMeta());
 });
 
-// WIP
 app.get("/subtitle", async (req, res) => {
-  const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
+  const query = parseQueryWithMangetURI(req.query);
 
-  if (!magnetURI) return res.status(400).send("Missing magnet URI");
-
-  const tor = new TorrentMovie(magnetURI);
+  const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
 
-  tor;
+  const file = await tor.getSubtitle(query.subtitle);
+  let stream = file.createReadStream();
 
-  return res.send(tor.getMovieMeta());
+  // Convert SRT stream to VTT stream
+  if (file.name.endsWith(".srt")) stream = stream.pipe(srt2vtt());
+
+  res.setHeader("Content-Type", "text/vtt");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${file.name.replace(/\.srt$/i, ".vtt")}"`
+  );
+
+  // Note: we cannot set Content-Length reliably after conversion
+  stream.pipe(res);
 });
 
 app.get("/stream", async (req, res) => {
-  const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
+  const query = parseQueryWithMangetURI(req.query);
 
-  if (!magnetURI) return res.status(400).send("Missing magnet URI");
+  if (!query) return res.status(400).send("Missing magnet URI");
 
-  const tor = new TorrentMovie(magnetURI);
+  const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
 
   const file = tor.video;

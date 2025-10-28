@@ -1,29 +1,33 @@
 import WebTorrent from "webtorrent";
 
+const supportedVideoExtensions = [".webm", ".mkv", ".mp4", ".ogv", ".mov"];
+
 const client = new WebTorrent();
 
 const initializer = function (torrent) {
   this.torrent = torrent;
   this.video = torrent.files.find(function (file) {
-    return file.name.endsWith(".mp4");
+    const ext = supportedVideoExtensions.find((ext) => file.name.endsWith(ext));
+    if (ext) return true;
+    return false;
   });
 
   this.subtitles = torrent.files.filter(function (file) {
-    return file.name.endsWith(".srt");
+    return file.name.endsWith(".srt") || file.name.endsWith(".vtt");
   });
 };
 
-export default function TorrentMovie(magnetURI) {
+export default function TorrentMedia(magnetURI) {
   this.magnetURI = magnetURI;
 
   this.video = null;
   this.subtitles = null;
-
   this.torrent = null;
 
   this.initiate = function () {
     return new Promise(async (resolve, reject) => {
       const torrent = await client.get(this.magnetURI);
+
       if (torrent) {
         console.log("Client is retrieving:", torrent.infoHash);
 
@@ -52,14 +56,14 @@ export default function TorrentMovie(magnetURI) {
     return this.video;
   };
 
-  // WIP
-  this.getSubtitles = function (subtitleName) {
+  this.getSubtitle = function (subtitleName) {
     return new Promise((resolve) => {
       let interval = setInterval(() => {
-        const downloadedFiles = this.subtitles.filter(
-          (subtitle) => subtitle.progress === 1
+        const subtitleFile = this.subtitles.find(
+          (subtitle) => subtitle.name === subtitleName
         );
-        if (downloadedFiles.length === this.subtitles.length) {
+
+        if (subtitleFile && subtitleFile.progress === 1) {
           clearInterval(interval);
           resolve(subtitleFile);
         }
