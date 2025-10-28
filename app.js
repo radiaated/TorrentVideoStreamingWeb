@@ -1,8 +1,11 @@
 import express from "express";
-import TorrentMedia from "./module/TorrentMedia.js";
 import cors from "cors";
 import srt2vtt from "srt-to-vtt";
+import mime from "mime-types";
+
+import TorrentMedia from "./module/TorrentMedia.js";
 import parseQueryWithMangetURI from "./helper/parseQueryWithMangetURI.js";
+import { cleanupTorrent } from "./module/TorrentMedia.js";
 
 const app = express();
 
@@ -11,11 +14,11 @@ app.use(cors());
 const port = 3000;
 
 app.get("/metadata", async (req, res) => {
-  const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
+  const query = parseQueryWithMangetURI(req.query);
 
-  if (!magnetURI) return res.status(400).send("Missing magnet URI");
+  if (!query.magnetURI) return res.status(400).send("Missing magnet URI");
 
-  const tor = new TorrentMedia(magnetURI);
+  const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
 
   return res.send(tor.getMovieMeta());
@@ -24,6 +27,9 @@ app.get("/metadata", async (req, res) => {
 app.get("/subtitle", async (req, res) => {
   const query = parseQueryWithMangetURI(req.query);
 
+  if (!query && query.magnetURI)
+    return res.status(400).send("Missing magnet URI");
+
   const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
 
@@ -31,13 +37,17 @@ app.get("/subtitle", async (req, res) => {
   let stream = file.createReadStream();
 
   // Convert SRT stream to VTT stream
-  if (file.name.endsWith(".srt")) stream = stream.pipe(srt2vtt());
+  if (file.name.endsWith(".srt")) {
+    stream = stream.pipe(srt2vtt());
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${file.name.replace(/\.srt$/i, ".vtt")}"`
+    );
+  } else {
+    res.setHeader("Content-Disposition", `attachment; filename="${file.name}"`);
+  }
 
   res.setHeader("Content-Type", "text/vtt");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${file.name.replace(/\.srt$/i, ".vtt")}"`
-  );
 
   // Note: we cannot set Content-Length reliably after conversion
   stream.pipe(res);
@@ -46,7 +56,8 @@ app.get("/subtitle", async (req, res) => {
 app.get("/stream", async (req, res) => {
   const query = parseQueryWithMangetURI(req.query);
 
-  if (!query) return res.status(400).send("Missing magnet URI");
+  if (!query && query.magnetURI)
+    return res.status(400).send("Missing magnet URI");
 
   const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
@@ -65,6 +76,7 @@ app.get("/stream", async (req, res) => {
 
   const fileSize = file.length;
   const parts = range.replace(/bytes=/, "").split("-");
+
   const start = parseInt(parts[0]);
 
   const defaultChunkSize = 2 * 1024 * 1024; // 2MB
@@ -75,11 +87,11 @@ app.get("/stream", async (req, res) => {
 
   const chunkSizeToSend = end - start + 1;
 
-  // file.select(
-  //   Math.floor(start / file._torrent.pieceLength),
-  //   Math.floor(end / file._torrent.pieceLength),
-  //   true
-  // );
+  file.select(
+    Math.floor(start / file._torrent.pieceLength),
+    Math.floor(end / file._torrent.pieceLength),
+    true
+  );
 
   const stream = file.createReadStream({ start, end });
 
@@ -87,20 +99,51 @@ app.get("/stream", async (req, res) => {
     "Content-Range": `bytes ${start}-${end}/${fileSize}`,
     "Accept-Ranges": "bytes",
     "Content-Length": chunkSizeToSend,
-    "Content-Type": "video/mp4",
+    "Content-Type": mime.lookup(file.name),
     "Cache-Control": "no-cache",
   };
 
   res.writeHead(206, head);
 
-  stream.on("error", (err) => {
-    console.error("Stream error:", err);
+  stream.pipe(res);
+
+  stream.on("error", () => {
     res.end();
   });
+});
 
-  stream.pipe(res);
+app.get("/destroy", async (req, res) => {
+  const query = parseQueryWithMangetURI(req.query);
+
+  if (!query && query.magnetURI)
+    return res.status(400).send("Missing magnet URI");
+
+  const tor = new TorrentMedia(query.magnetURI);
+
+  tor.destroy();
+
+  return res.send({ message: "Successfully destoryed" });
 });
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+});
+
+async function cleanUpServer(eventType) {
+  console.log("Closing with event: " + eventType);
+
+  await cleanupTorrent();
+
+  process.exit(0);
+}
+
+[
+  `exit`,
+  `SIGINT`,
+  `SIGUSR1`,
+  `SIGUSR2`,
+  `uncaughtException`,
+  `SIGTERM`,
+].forEach((eventType) => {
+  process.on(eventType, cleanUpServer.bind(null, eventType));
 });

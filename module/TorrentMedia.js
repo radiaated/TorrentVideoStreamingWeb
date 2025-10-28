@@ -17,6 +17,14 @@ const initializer = function (torrent) {
   });
 };
 
+export const cleanupTorrent = () => {
+  console.log("Cleaning up torrent before exiting...");
+  client.torrents.forEach(async (torrent) => {
+    await client.remove(torrent);
+    client.destroy();
+  });
+};
+
 export default function TorrentMedia(magnetURI) {
   this.magnetURI = magnetURI;
 
@@ -67,12 +75,13 @@ export default function TorrentMedia(magnetURI) {
           clearInterval(interval);
           resolve(subtitleFile);
         }
-      }, 5000);
+      }, 500);
     });
   };
 
-  // WIP
-  this.destroy = function () {
-    client.remove(this.torrent);
+  this.destroy = async function () {
+    const torrent = await client.get(this.magnetURI);
+
+    if (torrent) await client.remove(torrent);
   };
 }
