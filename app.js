@@ -4,25 +4,29 @@ import TorrentMovie from "./module/TorrentMovie.js";
 const app = express();
 const port = 3000;
 
-const activeTorrents = new Map();
-
-app.get("/fetch", async (req, res) => {
+app.get("/metadata", async (req, res) => {
   const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
 
   if (!magnetURI) return res.status(400).send("Missing magnet URI");
 
-  let tor = activeTorrents.get(magnetURI);
+  const tor = new TorrentMovie(magnetURI);
+  await tor.initiate();
 
-  if (!tor) {
-    tor = new TorrentMovie(magnetURI);
-    await tor.initiate();
-    activeTorrents.set(magnetURI, tor);
-  }
+  return res.send(tor.getMovieMeta());
+});
 
-  return res.send({
-    video: tor.video.name,
-    subitles: tor.subtitles.map((sub) => sub.name),
-  });
+// WIP
+app.get("/subtitle", async (req, res) => {
+  const magnetURI = req.originalUrl.split(/=(.*)/s)[1];
+
+  if (!magnetURI) return res.status(400).send("Missing magnet URI");
+
+  const tor = new TorrentMovie(magnetURI);
+  await tor.initiate();
+
+  tor;
+
+  return res.send(tor.getMovieMeta());
 });
 
 app.get("/stream", async (req, res) => {
@@ -30,13 +34,8 @@ app.get("/stream", async (req, res) => {
 
   if (!magnetURI) return res.status(400).send("Missing magnet URI");
 
-  let tor = activeTorrents.get(magnetURI);
-
-  if (!tor) {
-    tor = new TorrentMovie(magnetURI);
-    await tor.initiate();
-    activeTorrents.set(magnetURI, tor);
-  }
+  const tor = new TorrentMovie(magnetURI);
+  await tor.initiate();
 
   const file = tor.video;
 
@@ -52,25 +51,28 @@ app.get("/stream", async (req, res) => {
 
   const fileSize = file.length;
   const parts = range.replace(/bytes=/, "").split("-");
-  const start = parseInt(parts[0], 10);
+  const start = parseInt(parts[0]);
+
+  const defaultChunkSize = 2 * 1024 * 1024; // 2MB
+
   const end = parts[1]
-    ? parseInt(parts[1], 10)
-    : Math.min(start + 2 * 1024 * 1024, fileSize - 1);
+    ? parseInt(parts[1])
+    : Math.min(start + defaultChunkSize, fileSize - 1);
 
-  const chunkSize = end - start + 1;
+  const chunkSizeToSend = end - start + 1;
 
-  file.select(
-    Math.floor(start / file._torrent.pieceLength),
-    Math.floor(end / file._torrent.pieceLength),
-    true
-  );
+  // file.select(
+  //   Math.floor(start / file._torrent.pieceLength),
+  //   Math.floor(end / file._torrent.pieceLength),
+  //   true
+  // );
 
   const stream = file.createReadStream({ start, end });
 
   const head = {
     "Content-Range": `bytes ${start}-${end}/${fileSize}`,
     "Accept-Ranges": "bytes",
-    "Content-Length": chunkSize,
+    "Content-Length": chunkSizeToSend,
     "Content-Type": "video/mp4",
     "Cache-Control": "no-cache",
   };
