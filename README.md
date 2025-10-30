@@ -38,7 +38,7 @@ Returns the JSON response with names of video and subtitle files
 #### Get subtitle file by file name
 
 ```
-    http://localhost:3000/metadata?uri=<magnetURI>&subtitle=<subtitle_name>
+    http://localhost:3000/subtitle?uri=<magnetURI>&subtitle=<subtitle_name>
 ```
 
 Returns the subtitle file of type `ReadableStream`
@@ -46,7 +46,7 @@ Returns the subtitle file of type `ReadableStream`
 #### Stream video
 
 ```
-    http://localhost:3000/metadata?uri=<magnetURI>
+    http://localhost:3000/stream?uri=<magnetURI>
 ```
 
 ---
