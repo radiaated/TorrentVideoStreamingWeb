@@ -62,52 +62,35 @@ app.get("/stream", async (req, res) => {
   const tor = new TorrentMedia(query.magnetURI);
   await tor.initiate();
 
-  const file = tor.video;
-
-  if (!file) {
-    return res.status(404).send("No video file found.");
-  }
-
   const range = req.headers.range;
   if (!range) {
-    res.status(400).send("Requires Range header");
-    return;
+    return res.status(400).send("Requires Range header");
   }
 
-  const fileSize = file.length;
   const parts = range.replace(/bytes=/, "").split("-");
 
   const start = parseInt(parts[0]);
-
   const defaultChunkSize = 2 * 1024 * 1024; // 2MB
+  const end = parts[1] ? parseInt(parts[1]) : start + defaultChunkSize;
 
-  const end = parts[1]
-    ? parseInt(parts[1])
-    : Math.min(start + defaultChunkSize, fileSize - 1);
+  const streamableVideo = tor.getStreamableVideo(start, end);
 
-  const chunkSizeToSend = end - start + 1;
-
-  file.select(
-    Math.floor(start / file._torrent.pieceLength),
-    Math.floor(end / file._torrent.pieceLength),
-    true
-  );
-
-  const stream = file.createReadStream({ start, end });
+  if (!streamableVideo)
+    return res.status(206).send("Failed to create video stream");
 
   const head = {
-    "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+    "Content-Range": `bytes ${streamableVideo.start}-${streamableVideo.end}/${streamableVideo.fileSize}`,
     "Accept-Ranges": "bytes",
-    "Content-Length": chunkSizeToSend,
-    "Content-Type": mime.lookup(file.name),
+    "Content-Length": streamableVideo.chunkSize,
+    "Content-Type": mime.lookup(streamableVideo.fileName),
     "Cache-Control": "no-cache",
   };
 
   res.writeHead(206, head);
 
-  stream.pipe(res);
+  streamableVideo.stream.pipe(res);
 
-  stream.on("error", () => {
+  streamableVideo.stream.on("error", () => {
     res.end();
   });
 });
@@ -132,7 +115,7 @@ app.listen(port, () => {
 async function cleanUpServer(eventType) {
   console.log("Closing with event: " + eventType);
 
-  await cleanupTorrent();
+  cleanupTorrent();
 
   process.exit(0);
 }

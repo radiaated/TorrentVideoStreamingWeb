@@ -1,20 +1,31 @@
 import WebTorrent from "webtorrent";
+import getExtensionFromFileName from "../helper/getExtensionFromFileName.js";
 
-const supportedVideoExtensions = [".webm", ".mkv", ".mp4", ".ogv", ".mov"];
+const supportedVideoExtensions = ["webm", "mkv", "mp4", "ogv", "mov"];
 
 const client = new WebTorrent();
 
 const initializer = function (torrent) {
   this.torrent = torrent;
-  this.video = torrent.files.find(function (file) {
-    const ext = supportedVideoExtensions.find((ext) => file.name.endsWith(ext));
-    if (ext) return true;
-    return false;
+
+  let video = null;
+  let subtitles = [];
+
+  torrent.files.forEach((file) => {
+    file.deselect();
+    const fileExtension = getExtensionFromFileName(file.name);
+
+    if (fileExtension) {
+      if (supportedVideoExtensions.includes(fileExtension)) {
+        video = file;
+      } else if (file.name.endsWith(".srt") || file.name.endsWith(".vtt")) {
+        subtitles.push(file);
+      }
+    }
   });
 
-  this.subtitles = torrent.files.filter(function (file) {
-    return file.name.endsWith(".srt") || file.name.endsWith(".vtt");
-  });
+  this.video = video;
+  this.subtitles = subtitles;
 };
 
 export const cleanupTorrent = () => {
@@ -60,18 +71,40 @@ export default function TorrentMedia(magnetURI) {
     };
   };
 
-  this.getVideo = function () {
-    return this.video;
+  this.getStreamableVideo = function (start, end) {
+    this.video.select();
+    if (!this.video) {
+      return;
+    }
+
+    const fileSize = this.video.length;
+
+    const endByte = Math.min(end, fileSize - 1);
+
+    const stream = this.video.createReadStream({ start, end: endByte });
+
+    const chunkSize = endByte - start + 1;
+
+    return {
+      stream,
+      start,
+      end: endByte,
+      fileName: this.video.name,
+      fileSize,
+      chunkSize,
+    };
   };
 
   this.getSubtitle = function (subtitleName) {
     return new Promise((resolve) => {
-      let interval = setInterval(() => {
-        const subtitleFile = this.subtitles.find(
-          (subtitle) => subtitle.name === subtitleName
-        );
-
-        if (subtitleFile && subtitleFile.progress === 1) {
+      const subtitleFile = this.subtitles.find(
+        (subtitle) => subtitle.name === subtitleName
+      );
+      if (subtitleFile) {
+        subtitleFile.select();
+      }
+      const interval = setInterval(() => {
+        if (subtitleFile.progress === 1) {
           clearInterval(interval);
           resolve(subtitleFile);
         }
